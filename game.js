@@ -1,26 +1,81 @@
 class Particle {
-  constructor(x, y, color, radius, lifetime = 1000) {
+  constructor(x, y, color, radius, lifetime = 1000, options = {}) {
     this.x = x;
     this.y = y;
-    this.color = color;
+    this.startColor = color;
+    this.endColor = options.endColor || this.adjustColor(color, -50);
+    this.currentColor = this.startColor;
     this.radius = radius;
     this.lifetime = lifetime;
     this.createdAt = performance.now();
     this.alpha = 1;
+    this.useGradient = options.useGradient || false;
+    this.gradient = null;
+  }
+
+  adjustColor(color, amount) {
+    const hex = color.replace("#", "");
+    const num = parseInt(hex, 16);
+    const r = Math.min(255, Math.max(0, (num >> 16) + amount));
+    const g = Math.min(255, Math.max(0, ((num >> 8) & 0x00ff) + amount));
+    const b = Math.min(255, Math.max(0, (num & 0x0000ff) + amount));
+    return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+  }
+
+  interpolateColor(color1, color2, factor) {
+    const hex1 = parseInt(color1.replace("#", ""), 16);
+    const hex2 = parseInt(color2.replace("#", ""), 16);
+
+    const r1 = hex1 >> 16;
+    const g1 = (hex1 >> 8) & 0xff;
+    const b1 = hex1 & 0xff;
+
+    const r2 = hex2 >> 16;
+    const g2 = (hex2 >> 8) & 0xff;
+    const b2 = hex2 & 0xff;
+
+    const r = Math.round(r1 + (r2 - r1) * factor);
+    const g = Math.round(g1 + (g2 - g1) * factor);
+    const b = Math.round(b1 + (b2 - b1) * factor);
+
+    return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
   }
 
   update() {
     const age = performance.now() - this.createdAt;
     this.alpha = Math.max(0, 1 - age / this.lifetime);
+
+    // Интерполируем цвет на основе возраста частицы
+    const colorFactor = 1 - this.alpha;
+    this.currentColor = this.interpolateColor(
+      this.startColor,
+      this.endColor,
+      colorFactor
+    );
+
     return this.alpha > 0;
+  }
+
+  createGradient(ctx) {
+    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
+    gradient.addColorStop(0, this.currentColor);
+    gradient.addColorStop(1, this.adjustColor(this.currentColor, -30));
+    return gradient;
   }
 
   draw(ctx) {
     ctx.save();
     ctx.globalAlpha = this.alpha;
-    ctx.fillStyle = this.color;
+    ctx.translate(this.x, this.y);
+
+    if (this.useGradient) {
+      ctx.fillStyle = this.createGradient(ctx);
+    } else {
+      ctx.fillStyle = this.currentColor;
+    }
+
     ctx.beginPath();
-    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -100,7 +155,11 @@ class Ball {
         this.y,
         this.color,
         this.radius * 0.7,
-        this.particleLifetime
+        this.particleLifetime,
+        {
+          useGradient: this.useGradient,
+          endColor: this.adjustColor(this.color, -50),
+        }
       );
       this.particles.unshift(particle);
       if (this.particles.length > this.maxParticles) {
@@ -175,13 +234,20 @@ class Ring {
     this.rotationSpeed = rotationSpeed;
     this.gapSize = (gapSizeDegrees * Math.PI) / 180;
     this.gapHalfSize = this.gapSize / 2;
-    this.thickness = 5;
+    this.baseThickness = 5;
+    this.thickness = this.baseThickness;
     this.active = true;
     this.color = color;
     this.gradient = null;
     this.useGradient = false;
     this.glowSize = 0;
     this.lastCollisionTime = 0;
+
+    // Параметры пульсации
+    this.pulseEnabled = true;
+    this.pulsePhase = Math.random() * Math.PI * 2; // Случайная начальная фаза
+    this.pulseSpeed = 0.1;
+    this.pulseAmplitude = 0.15;
   }
 
   updateGradient(ctx) {
