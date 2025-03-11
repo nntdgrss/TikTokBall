@@ -3,8 +3,8 @@ class Ball {
     this.x = x;
     this.y = y;
     this.radius = radius;
-    this.speed = speed;
-    this.maxSpeed = speed * 1.5;
+    this.speed = speed; // Фиксированная скорость
+    this.lastCollisionTime = 0;
 
     // Случайное начальное направление с небольшим отклонением
     const angle = Math.random() * Math.PI * 2;
@@ -42,22 +42,33 @@ class Ball {
   }
 
   bounce(normal) {
+    const now = performance.now();
+    if (now - this.lastCollisionTime < 50) return;
+    this.lastCollisionTime = now;
+
+    // Базовое отражение с сохранением направления
     const dot = this.dx * normal.x + this.dy * normal.y;
     const reflection = {
       x: this.dx - 2 * dot * normal.x,
       y: this.dy - 2 * dot * normal.y,
     };
 
-    // Добавляем случайное отклонение к отражению
-    const angle = Math.atan2(reflection.y, reflection.x);
-    const deviation = ((Math.random() - 0.5) * Math.PI) / 6;
+    // Нормализуем вектор отражения
+    const length = Math.sqrt(
+      reflection.x * reflection.x + reflection.y * reflection.y
+    );
+    const normalized = {
+      x: reflection.x / length,
+      y: reflection.y / length,
+    };
 
-    // Увеличиваем скорость после отскока
-    const currentSpeed = Math.sqrt(this.dx * this.dx + this.dy * this.dy);
-    const newSpeed = Math.min(currentSpeed * 1.1, this.maxSpeed);
+    // Добавляем небольшое случайное отклонение
+    const deviation = ((Math.random() - 0.5) * Math.PI) / 8; // Уменьшили до ±22.5 градусов
+    const angle = Math.atan2(normalized.y, normalized.x) + deviation;
 
-    this.dx = Math.cos(angle + deviation) * newSpeed;
-    this.dy = Math.sin(angle + deviation) * newSpeed;
+    // Применяем фиксированную скорость
+    this.dx = Math.cos(angle) * this.speed;
+    this.dy = Math.sin(angle) * this.speed;
   }
 
   draw(ctx) {
@@ -89,12 +100,14 @@ class Ring {
     this.angle = Math.random() * Math.PI * 2;
     this.rotationSpeed = rotationSpeed;
     this.gapSize = (gapSizeDegrees * Math.PI) / 180;
+    this.gapHalfSize = this.gapSize / 2;
     this.thickness = 5;
     this.active = true;
     this.color = color;
     this.gradient = null;
     this.useGradient = false;
     this.glowSize = 0;
+    this.lastCollisionTime = 0;
   }
 
   updateGradient(ctx) {
@@ -119,32 +132,55 @@ class Ring {
     return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
   }
 
+  normalizeAngle(angle) {
+    angle = angle % (Math.PI * 2);
+    return angle < 0 ? angle + Math.PI * 2 : angle;
+  }
+
   rotate() {
-    this.angle += this.rotationSpeed;
+    this.angle = this.normalizeAngle(this.angle + this.rotationSpeed);
+  }
+
+  isMovingTowards(ball) {
+    const distance = Math.sqrt(ball.x * ball.x + ball.y * ball.y);
+    const distanceFromRing = distance - this.radius;
+    const dotProduct = (ball.x * ball.dx + ball.y * ball.dy) / distance;
+    return Math.abs(distanceFromRing) <= this.thickness + ball.radius
+      ? dotProduct * Math.sign(distanceFromRing) < 0
+      : dotProduct > 0;
+  }
+
+  isInGap(ballAngle) {
+    const normalized = this.normalizeAngle(ballAngle - this.angle);
+    return (
+      normalized <= this.gapSize || normalized >= Math.PI * 2 - this.gapSize
+    );
   }
 
   checkCollision(ball) {
     if (!this.active) return false;
 
+    // Проверяем множественные столкновения
+    const now = performance.now();
+    if (now - this.lastCollisionTime < 50) return false;
+
     const distance = Math.sqrt(ball.x * ball.x + ball.y * ball.y);
+    const collisionRange = this.thickness + ball.radius;
+    const distanceFromRing = Math.abs(distance - this.radius);
 
-    if (Math.abs(distance - this.radius) <= this.thickness + ball.radius) {
+    // Шарик в диапазоне кольца?
+    if (distanceFromRing <= collisionRange) {
       const ballAngle = Math.atan2(ball.y, ball.x);
-      let relativeAngle = (ballAngle - this.angle) % (Math.PI * 2);
-      if (relativeAngle < 0) relativeAngle += Math.PI * 2;
 
-      if (
-        relativeAngle > this.gapSize &&
-        relativeAngle < Math.PI * 2 - this.gapSize
-      ) {
+      // Шарик не в проеме и движется к кольцу?
+      if (!this.isInGap(ballAngle) && this.isMovingTowards(ball)) {
+        this.lastCollisionTime = now;
         return {
           x: ball.x / distance,
           y: ball.y / distance,
         };
       }
-    }
-
-    if (distance > this.radius + this.thickness + ball.radius) {
+    } else if (distance > this.radius + collisionRange) {
       this.active = false;
     }
 
@@ -161,14 +197,13 @@ class Ring {
       ctx.shadowBlur = this.glowSize;
     }
 
+    // Отрисовываем кольцо с проёмом
     ctx.beginPath();
-    ctx.arc(
-      0,
-      0,
-      this.radius,
-      this.angle + this.gapSize,
+    const startAngle = this.normalizeAngle(this.angle + this.gapSize);
+    const endAngle = this.normalizeAngle(
       this.angle + Math.PI * 2 - this.gapSize
     );
+    ctx.arc(0, 0, this.radius, startAngle, endAngle);
 
     if (this.useGradient && this.gradient) {
       ctx.strokeStyle = this.gradient;
@@ -188,6 +223,17 @@ class Settings {
     this.settingsBtn = document.getElementById("settingsButton");
     this.closeBtn = document.getElementById("closeSettings");
     this.saveBtn = document.getElementById("saveSettings");
+
+    // Определяем диапазоны значений для валидации
+    this.ranges = {
+      ballSize: { min: 5, max: 20, default: 10 },
+      ballSpeed: { min: 1, max: 15, default: 8 },
+      ballGlow: { min: 0, max: 20, default: 0 },
+      ringCount: { min: 1, max: 20, default: 5 },
+      ringSpeed: { min: 1, max: 50, default: 10 },
+      gapSize: { min: 15, max: 180, default: 45 },
+      ringGlow: { min: 0, max: 20, default: 0 },
+    };
 
     this.inputs = {
       ballSize: document.getElementById("ballSize"),
@@ -217,16 +263,12 @@ class Settings {
     };
 
     this.defaults = {
-      ballSize: 10,
-      ballSpeed: 8,
-      ballGlow: 0,
+      ...Object.fromEntries(
+        Object.entries(this.ranges).map(([key, value]) => [key, value.default])
+      ),
       ballColor: "#ffffff",
-      ballGradient: false,
-      ringCount: 5,
-      ringSpeed: 10,
-      gapSize: 45,
-      ringGlow: 0,
       ringColor: "#ffffff",
+      ballGradient: false,
       ringGradient: false,
       randomRingColors: false,
       synchronizedMovement: false,
@@ -237,6 +279,17 @@ class Settings {
     this.loadSettings();
   }
 
+  validateValue(key, value) {
+    if (this.ranges[key]) {
+      const numValue = Number(value);
+      return Math.min(
+        Math.max(numValue, this.ranges[key].min),
+        this.ranges[key].max
+      );
+    }
+    return value;
+  }
+
   setupEventListeners() {
     this.settingsBtn.addEventListener("click", () => this.openModal());
     this.closeBtn.addEventListener("click", () => this.closeModal());
@@ -245,10 +298,12 @@ class Settings {
     Object.entries(this.inputs).forEach(([key, input]) => {
       if (input.type === "range") {
         input.addEventListener("input", () => {
+          const validValue = this.validateValue(key, input.value);
+          input.value = validValue;
           if (key === "gapSize") {
-            this.valueDisplays[key].textContent = input.value + "°";
+            this.valueDisplays[key].textContent = validValue + "°";
           } else {
-            this.valueDisplays[key].textContent = input.value;
+            this.valueDisplays[key].textContent = validValue;
           }
         });
       }
@@ -271,9 +326,45 @@ class Settings {
   }
 
   loadSettings() {
-    const saved = localStorage.getItem("gameSettings");
-    const settings = saved ? JSON.parse(saved) : this.defaults;
+    let settings;
+    try {
+      const saved = localStorage.getItem("gameSettings");
+      settings = saved ? JSON.parse(saved) : this.defaults;
 
+      // Валидация всех числовых значений
+      Object.entries(this.ranges).forEach(([key]) => {
+        settings[key] = this.validateValue(
+          key,
+          settings[key] ?? this.defaults[key]
+        );
+      });
+
+      // Проверка булевых значений
+      [
+        "ballGradient",
+        "ringGradient",
+        "randomRingColors",
+        "synchronizedMovement",
+        "infiniteMode",
+      ].forEach((key) => {
+        settings[key] =
+          typeof settings[key] === "boolean"
+            ? settings[key]
+            : this.defaults[key];
+      });
+
+      // Проверка цветов
+      ["ballColor", "ringColor"].forEach((key) => {
+        if (!/^#[0-9A-F]{6}$/i.test(settings[key])) {
+          settings[key] = this.defaults[key];
+        }
+      });
+    } catch (e) {
+      console.error("Error loading settings:", e);
+      settings = this.defaults;
+    }
+
+    // Обновляем значения в интерфейсе
     Object.entries(this.inputs).forEach(([key, input]) => {
       if (input.type === "checkbox") {
         input.checked = settings[key];
@@ -296,7 +387,11 @@ class Settings {
   saveSettings() {
     const settings = {};
     Object.entries(this.inputs).forEach(([key, input]) => {
-      settings[key] = input.type === "checkbox" ? input.checked : input.value;
+      if (input.type === "checkbox") {
+        settings[key] = input.checked;
+      } else {
+        settings[key] = this.validateValue(key, input.value);
+      }
     });
 
     localStorage.setItem("gameSettings", JSON.stringify(settings));
