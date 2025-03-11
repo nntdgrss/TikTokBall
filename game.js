@@ -1,22 +1,53 @@
+class Particle {
+  constructor(x, y, color, radius, lifetime = 1000) {
+    this.x = x;
+    this.y = y;
+    this.color = color;
+    this.radius = radius;
+    this.lifetime = lifetime;
+    this.createdAt = performance.now();
+    this.alpha = 1;
+  }
+
+  update() {
+    const age = performance.now() - this.createdAt;
+    this.alpha = Math.max(0, 1 - age / this.lifetime);
+    return this.alpha > 0;
+  }
+
+  draw(ctx) {
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 class Ball {
   constructor(x, y, radius, speed) {
     this.x = x;
     this.y = y;
     this.radius = radius;
-    this.speed = speed; // Фиксированная скорость
+    this.speed = speed;
     this.lastCollisionTime = 0;
-
-    // Случайное начальное направление с небольшим отклонением
-    const angle = Math.random() * Math.PI * 2;
-    const deviation = ((Math.random() - 0.5) * Math.PI) / 6;
-    this.dx = Math.cos(angle + deviation) * speed;
-    this.dy = Math.sin(angle + deviation) * speed;
+    this.resetVelocity();
 
     // Параметры градиента
     this.gradient = null;
     this.useGradient = false;
     this.glowSize = 0;
     this.color = "#ffffff";
+
+    // Параметры следа
+    this.particles = [];
+    this.lastParticleTime = 0;
+    this.useTrail = false; // Включен ли след
+    this.particleInterval = 50; // Интервал создания частиц
+    this.particleLifetime = 1000; // Время жизни частиц
+    this.maxParticles = 20; // Максимальное количество частиц
   }
 
   updateGradient(ctx) {
@@ -36,9 +67,50 @@ class Ball {
     return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
   }
 
+  resetVelocity() {
+    // Случайное начальное направление
+    const angle = Math.random() * Math.PI * 2;
+    const deviation = ((Math.random() - 0.5) * Math.PI) / 6;
+    this.dx = Math.cos(angle + deviation) * this.speed;
+    this.dy = Math.sin(angle + deviation) * this.speed;
+  }
+
   move() {
     this.x += this.dx;
     this.y += this.dy;
+    if (this.useTrail) {
+      this.createParticle();
+      this.updateParticles();
+    }
+  }
+
+  setSpeed(speed) {
+    this.speed = speed;
+    const currentAngle = Math.atan2(this.dy, this.dx);
+    this.dx = Math.cos(currentAngle) * speed;
+    this.dy = Math.sin(currentAngle) * speed;
+  }
+
+  createParticle() {
+    const now = performance.now();
+    if (now - this.lastParticleTime >= this.particleInterval) {
+      this.lastParticleTime = now;
+      const particle = new Particle(
+        this.x,
+        this.y,
+        this.color,
+        this.radius * 0.7,
+        this.particleLifetime
+      );
+      this.particles.unshift(particle);
+      if (this.particles.length > this.maxParticles) {
+        this.particles.pop();
+      }
+    }
+  }
+
+  updateParticles() {
+    this.particles = this.particles.filter((particle) => particle.update());
   }
 
   bounce(normal) {
@@ -46,14 +118,12 @@ class Ball {
     if (now - this.lastCollisionTime < 50) return;
     this.lastCollisionTime = now;
 
-    // Базовое отражение с сохранением направления
     const dot = this.dx * normal.x + this.dy * normal.y;
     const reflection = {
       x: this.dx - 2 * dot * normal.x,
       y: this.dy - 2 * dot * normal.y,
     };
 
-    // Нормализуем вектор отражения
     const length = Math.sqrt(
       reflection.x * reflection.x + reflection.y * reflection.y
     );
@@ -62,16 +132,20 @@ class Ball {
       y: reflection.y / length,
     };
 
-    // Добавляем небольшое случайное отклонение
-    const deviation = ((Math.random() - 0.5) * Math.PI) / 8; // Уменьшили до ±22.5 градусов
+    const deviation = ((Math.random() - 0.5) * Math.PI) / 8;
     const angle = Math.atan2(normalized.y, normalized.x) + deviation;
 
-    // Применяем фиксированную скорость
     this.dx = Math.cos(angle) * this.speed;
     this.dy = Math.sin(angle) * this.speed;
   }
 
   draw(ctx) {
+    if (this.useTrail) {
+      for (const particle of this.particles) {
+        particle.draw(ctx);
+      }
+    }
+
     ctx.save();
     ctx.translate(this.x, this.y);
 
@@ -160,7 +234,6 @@ class Ring {
   checkCollision(ball) {
     if (!this.active) return false;
 
-    // Проверяем множественные столкновения
     const now = performance.now();
     if (now - this.lastCollisionTime < 50) return false;
 
@@ -168,11 +241,9 @@ class Ring {
     const collisionRange = this.thickness + ball.radius;
     const distanceFromRing = Math.abs(distance - this.radius);
 
-    // Шарик в диапазоне кольца?
     if (distanceFromRing <= collisionRange) {
       const ballAngle = Math.atan2(ball.y, ball.x);
 
-      // Шарик не в проеме и движется к кольцу?
       if (!this.isInGap(ballAngle) && this.isMovingTowards(ball)) {
         this.lastCollisionTime = now;
         return {
@@ -197,7 +268,6 @@ class Ring {
       ctx.shadowBlur = this.glowSize;
     }
 
-    // Отрисовываем кольцо с проёмом
     ctx.beginPath();
     const startAngle = this.normalizeAngle(this.angle + this.gapSize);
     const endAngle = this.normalizeAngle(
@@ -224,7 +294,6 @@ class Settings {
     this.closeBtn = document.getElementById("closeSettings");
     this.saveBtn = document.getElementById("saveSettings");
 
-    // Определяем диапазоны значений для валидации
     this.ranges = {
       ballSize: { min: 5, max: 20, default: 10 },
       ballSpeed: { min: 1, max: 15, default: 8 },
@@ -241,6 +310,7 @@ class Settings {
       ballGlow: document.getElementById("ballGlow"),
       ballColor: document.getElementById("ballColor"),
       ballGradient: document.getElementById("ballGradient"),
+      ballTrail: document.getElementById("ballTrail"), // Новая настройка
       ringCount: document.getElementById("ringCount"),
       ringSpeed: document.getElementById("ringSpeed"),
       gapSize: document.getElementById("gapSize"),
@@ -269,6 +339,7 @@ class Settings {
       ballColor: "#ffffff",
       ringColor: "#ffffff",
       ballGradient: false,
+      ballTrail: true, // След по умолчанию включен
       ringGradient: false,
       randomRingColors: false,
       synchronizedMovement: false,
@@ -331,7 +402,6 @@ class Settings {
       const saved = localStorage.getItem("gameSettings");
       settings = saved ? JSON.parse(saved) : this.defaults;
 
-      // Валидация всех числовых значений
       Object.entries(this.ranges).forEach(([key]) => {
         settings[key] = this.validateValue(
           key,
@@ -339,9 +409,9 @@ class Settings {
         );
       });
 
-      // Проверка булевых значений
       [
         "ballGradient",
+        "ballTrail",
         "ringGradient",
         "randomRingColors",
         "synchronizedMovement",
@@ -353,7 +423,6 @@ class Settings {
             : this.defaults[key];
       });
 
-      // Проверка цветов
       ["ballColor", "ringColor"].forEach((key) => {
         if (!/^#[0-9A-F]{6}$/i.test(settings[key])) {
           settings[key] = this.defaults[key];
@@ -364,7 +433,6 @@ class Settings {
       settings = this.defaults;
     }
 
-    // Обновляем значения в интерфейсе
     Object.entries(this.inputs).forEach(([key, input]) => {
       if (input.type === "checkbox") {
         input.checked = settings[key];
@@ -427,7 +495,6 @@ class Game {
     const ringCount = Number(gameSettings.ringCount);
     const maxRadius = 100 + (ringCount - 1) * 50;
 
-    // Вычисляем масштаб, чтобы все кольца помещались на экране
     this.scale = Math.min(
       this.canvas.width / (maxRadius * 2.5),
       this.canvas.height / (maxRadius * 2.5)
@@ -438,15 +505,14 @@ class Game {
     const gameSettings = this.settings.getSettings();
     this.updateCanvasSize();
 
-    // Создаем шарик
     const ballRadius = Number(gameSettings.ballSize);
     this.ball = new Ball(0, 0, ballRadius, Number(gameSettings.ballSpeed));
     this.ball.color = gameSettings.ballColor;
     this.ball.useGradient = gameSettings.ballGradient;
+    this.ball.useTrail = gameSettings.ballTrail; // Включаем/выключаем след
     this.ball.glowSize = Number(gameSettings.ballGlow);
     this.ball.updateGradient(this.ctx);
 
-    // Создаем кольца
     const ringCount = Number(gameSettings.ringCount);
     const baseRadius = 100;
     const radiusStep = 50;
@@ -457,10 +523,8 @@ class Game {
       let speed;
 
       if (gameSettings.synchronizedMovement) {
-        // Для синхронного движения скорость уменьшается с каждым кольцом
         speed = baseSpeed * (1 - i / ringCount);
       } else {
-        // Для обычного движения чередуем направление
         speed = baseSpeed * (i % 2 ? -1 : 1) * (1 + i * 0.2);
       }
 
@@ -502,7 +566,10 @@ class Game {
 
     if (activeRings === 0) {
       if (this.infiniteMode) {
+        const gameSettings = this.settings.getSettings();
+        const ballSpeed = Number(gameSettings.ballSpeed);
         this.reset();
+        this.ball.setSpeed(ballSpeed);
       } else {
         this.resetButton.style.display = "block";
         return false;
