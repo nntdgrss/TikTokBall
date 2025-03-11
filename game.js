@@ -290,9 +290,14 @@ class Ring {
 class Settings {
   constructor() {
     this.modal = document.getElementById("settingsModal");
+    this.modalContent = this.modal.querySelector(".modal-content");
     this.settingsBtn = document.getElementById("settingsButton");
     this.closeBtn = document.getElementById("closeSettings");
     this.saveBtn = document.getElementById("saveSettings");
+
+    // Переменные для отслеживания свайпа
+    this.touchStartY = 0;
+    this.touchMoveY = 0;
 
     this.ranges = {
       ballSize: { min: 5, max: 20, default: 10 },
@@ -362,9 +367,51 @@ class Settings {
   }
 
   setupEventListeners() {
-    this.settingsBtn.addEventListener("click", () => this.openModal());
-    this.closeBtn.addEventListener("click", () => this.closeModal());
-    this.saveBtn.addEventListener("click", () => this.saveSettings());
+    // Основные кнопки
+    this.settingsBtn.addEventListener("click", () => {
+      this.vibrate();
+      this.openModal();
+    });
+
+    this.closeBtn.addEventListener("click", () => {
+      this.vibrate();
+      this.closeModal();
+    });
+
+    this.saveBtn.addEventListener("click", () => {
+      this.vibrate();
+      this.saveSettings();
+    });
+
+    // Обработчики свайпа
+    this.modal.addEventListener("touchstart", (e) => {
+      this.touchStartY = e.touches[0].clientY;
+      this.modalContent.style.transition = "none";
+    });
+
+    this.modal.addEventListener("touchmove", (e) => {
+      this.touchMoveY = e.touches[0].clientY;
+      const diff = this.touchMoveY - this.touchStartY;
+
+      // Если свайп вниз и мы в начале прокрутки
+      if (diff > 0 && this.modal.scrollTop === 0) {
+        e.preventDefault();
+        this.modalContent.style.transform = `translateY(${diff}px) scale(${
+          1 - diff / 1000
+        })`;
+      }
+    });
+
+    this.modal.addEventListener("touchend", (e) => {
+      const diff = this.touchMoveY - this.touchStartY;
+      this.modalContent.style.transition = "transform 0.3s ease";
+
+      if (diff > 100) {
+        this.closeModal();
+      } else {
+        this.modalContent.style.transform = "";
+      }
+    });
 
     Object.entries(this.inputs).forEach(([key, input]) => {
       if (input.type === "range") {
@@ -381,8 +428,15 @@ class Settings {
     });
   }
 
+  vibrate() {
+    if ("vibrate" in navigator) {
+      navigator.vibrate(30);
+    }
+  }
+
   openModal() {
     this.modal.style.display = "block";
+    this.modalContent.style.transform = "";
     setTimeout(() => this.modal.classList.add("visible"), 10);
   }
 
@@ -501,7 +555,15 @@ class Game {
     );
   }
 
-  reset() {
+  reset(withFade = false) {
+    if (this.isResetting) return;
+    this.isResetting = true;
+
+    if (withFade) {
+      this.fadeOutAndReset();
+      return;
+    }
+
     const gameSettings = this.settings.getSettings();
     this.updateCanvasSize();
 
@@ -546,10 +608,13 @@ class Game {
 
     this.resetButton.style.display = "none";
     this.infiniteMode = gameSettings.infiniteMode;
+    this.isResetting = false;
     this.gameLoop();
   }
 
   update() {
+    if (!this.ball || !this.rings) return false;
+
     this.ball.move();
 
     let activeRings = 0;
@@ -566,10 +631,8 @@ class Game {
 
     if (activeRings === 0) {
       if (this.infiniteMode) {
-        const gameSettings = this.settings.getSettings();
-        const ballSpeed = Number(gameSettings.ballSpeed);
-        this.reset();
-        this.ball.setSpeed(ballSpeed);
+        this.reset(true);
+        return false;
       } else {
         this.resetButton.style.display = "block";
         return false;
@@ -579,25 +642,51 @@ class Game {
     return true;
   }
 
+  fadeOutAndReset() {
+    let opacity = 0;
+    const fadeOut = () => {
+      this.ctx.fillStyle = `rgba(0, 0, 0, ${opacity})`;
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+      if (opacity < 1) {
+        opacity += 0.15; // Ускорим затухание
+        requestAnimationFrame(fadeOut);
+      } else {
+        // Полностью очищаем экран перед сбросом
+        this.ctx.fillStyle = "black";
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.isResetting = false;
+        this.reset();
+      }
+    };
+    fadeOut();
+  }
+
   draw() {
+    if (this.isResetting) {
+      return;
+    }
+
     this.ctx.fillStyle = "black";
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
-    this.ctx.save();
-    this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
-    this.ctx.scale(this.scale, this.scale);
+    if (this.rings && this.ball) {
+      this.ctx.save();
+      this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+      this.ctx.scale(this.scale, this.scale);
 
-    for (let ring of this.rings) {
-      ring.draw(this.ctx);
+      for (let ring of this.rings) {
+        ring.draw(this.ctx);
+      }
+
+      this.ball.draw(this.ctx);
+
+      this.ctx.restore();
     }
-
-    this.ball.draw(this.ctx);
-
-    this.ctx.restore();
   }
 
   gameLoop() {
-    if (this.update()) {
+    if (!this.isResetting && this.update()) {
       this.draw();
       requestAnimationFrame(() => this.gameLoop());
     }
