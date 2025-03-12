@@ -126,6 +126,27 @@
             </div>
 
             <div class="setting-item">
+              <label for="particleColor">Цвет частиц:</label>
+              <input type="color" id="particleColor" value="#ffffff" />
+            </div>
+
+            <div class="setting-item">
+              <label>
+                <input type="checkbox" id="finalExplosionColors" checked />
+                Разноцветный финальный взрыв
+              </label>
+            </div>
+
+            <div class="setting-item">
+              <label for="sparkColor">Цвет искр:</label>
+              <select id="sparkColor">
+                <option value="same">Как у кольца</option>
+                <option value="contrast">Контрастный</option>
+                <option value="random">Случайный</option>
+              </select>
+            </div>
+
+            <div class="setting-item">
               <label for="pulseSpeed">Скорость пульсации:</label>
               <input type="range" id="pulseSpeed" min="1" max="10" value="5" />
               <div class="setting-value" id="pulseSpeedValue">5</div>
