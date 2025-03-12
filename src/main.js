@@ -12,6 +12,16 @@ document.querySelector("#app").innerHTML = `
       <div class="modal-content">
         <div class="settings-header">
           <h2>Настройки игры</h2>
+          <div class="lang-modal" id="langModal">
+  <div class="lang-modal-content">
+    <h3 data-translate="language">Выберите язык</h3>
+    <div class="flags-container">
+      <button class="lang-option">
+        <img src="flags/us.svg" alt="English" class="flag-icon">
+      </button>
+    </div>
+  </div>
+</div>
         </div>
         <div class="settings-grid">
 
