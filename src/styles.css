@@ -1,8 +1,8 @@
 :root {
   --primary-color: #2196f3;
   --success-color: #4caf50;
-  --bg-gradient: linear-gradient(145deg, #1a1a1a, #2a2a2a);
-  --modal-bg: rgba(0, 0, 0, 0.8);
+  --bg-gradient: linear-gradient(145deg, #1a1a1aa8, #2a2a2ab0);
+  --modal-bg: rgba(0, 0, 0, 0.253);
   --border-light: rgba(255, 255, 255, 0.1);
   --shadow-color: rgba(0, 0, 0, 0.5);
 }
@@ -26,6 +26,7 @@ body {
   left: 0;
   width: 100vw;
   height: 100vh;
+  touch-action: none;
 }
 
 .canvas-container {
@@ -38,6 +39,7 @@ body {
   justify-content: center;
   align-items: center;
   overflow: hidden;
+  touch-action: none;
 }
 
 .modal {
@@ -49,6 +51,7 @@ body {
   height: 100vh;
   height: 100dvh;
   background-color: var(--modal-bg);
+  backdrop-filter: blur(10px);
   z-index: 1000;
   opacity: 0;
   transition: opacity 0.3s ease;
@@ -262,7 +265,7 @@ button:active {
 
 #settingsButton:hover {
   background: rgba(255, 255, 255, 0.2);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   box-shadow: 0 8px 16px var(--shadow-color);
 }
 

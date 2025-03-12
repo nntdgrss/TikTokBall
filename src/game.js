@@ -364,28 +364,21 @@ class Ring {
 
   getSparkColor() {
     try {
-      let sparkColor = this.color; // По умолчанию используем цвет кольца
+      if (!window.game?.settings) return this.color;
 
-      if (window.game && window.game.settings) {
-        const gameSettings = window.game.settings.getSettings();
-        if (gameSettings) {
-          switch (gameSettings.sparkColor) {
-            case "same":
-              sparkColor = this.color;
-              break;
-            case "contrast":
-              sparkColor = this.adjustColor(this.color, 100);
-              break;
-            case "random":
-              sparkColor = window.game.settings.generateRandomColor();
-              break;
-            default:
-              sparkColor = gameSettings.particleColor || "#ffffff";
-          }
-        }
+      const settings = window.game.settings.getSettings();
+      if (!settings?.sparkColor) return this.color;
+
+      switch (settings.sparkColor) {
+        case "same":
+          return this.color;
+        case "contrast":
+          return this.adjustColor(this.color, 100);
+        case "random":
+          return window.game.settings.generateRandomColor();
+        default:
+          return settings.particleColor || this.color;
       }
-
-      return sparkColor;
     } catch (e) {
       console.warn("Failed to get spark color from settings");
       return this.color;
@@ -474,7 +467,19 @@ class Ring {
 
   explode() {
     const segmentAngle = (Math.PI * 2 - this.gapSize * 2) / this.particleCount;
-    const particleColor = window.game.settings.getSettings().particleColor;
+    let particleColor = "#ffffff";
+
+    try {
+      if (window.game?.settings) {
+        const gameSettings = window.game.settings.getSettings();
+        if (gameSettings?.particleColor) {
+          particleColor = gameSettings.particleColor;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to get particle color from settings");
+    }
+
     for (let i = 0; i < this.particleCount; i++) {
       const angle = this.angle + this.gapSize + segmentAngle * i;
       const speed = 1 + Math.random() * 2;
@@ -504,7 +509,6 @@ class Settings {
     this.closeBtn = document.getElementById("closeSettings");
     this.saveBtn = document.getElementById("saveSettings");
 
-    // Переменные для отслеживания свайпа
     this.touchStartY = 0;
     this.touchMoveY = 0;
 
@@ -574,23 +578,69 @@ class Settings {
       finalExplosionColors: true,
     };
 
+    // Инициализируем текущие настройки
+    this.currentSettings = this.getStoredSettings();
     this.setupEventListeners();
-    this.loadSettings();
+    this.updateUI(this.currentSettings);
   }
 
-  validateValue(key, value) {
-    if (this.ranges[key]) {
-      const numValue = Number(value);
-      return Math.min(
-        Math.max(numValue, this.ranges[key].min),
-        this.ranges[key].max
-      );
+  getStoredSettings() {
+    try {
+      const saved = localStorage.getItem("gameSettings");
+      if (!saved) return { ...this.defaults };
+
+      const savedSettings = JSON.parse(saved);
+      const settings = { ...this.defaults };
+
+      Object.entries(this.defaults).forEach(([key, defaultValue]) => {
+        if (savedSettings[key] !== undefined) {
+          if (typeof defaultValue === "boolean") {
+            settings[key] = Boolean(savedSettings[key]);
+          } else if (typeof defaultValue === "number") {
+            settings[key] = this.validateValue(key, Number(savedSettings[key]));
+          } else if (key === "sparkColor") {
+            settings[key] = ["same", "contrast", "random"].includes(
+              savedSettings[key]
+            )
+              ? savedSettings[key]
+              : defaultValue;
+          } else if (
+            typeof defaultValue === "string" &&
+            defaultValue.startsWith("#")
+          ) {
+            settings[key] = /^#[0-9A-F]{6}$/i.test(savedSettings[key])
+              ? savedSettings[key]
+              : defaultValue;
+          }
+        }
+      });
+
+      return settings;
+    } catch (e) {
+      console.error("Error loading settings:", e);
+      return { ...this.defaults };
     }
-    return value;
+  }
+
+  updateUI(settings) {
+    Object.entries(this.inputs).forEach(([key, input]) => {
+      if (!input) return;
+
+      if (input.type === "checkbox") {
+        input.checked = settings[key];
+      } else {
+        input.value = settings[key];
+      }
+
+      if (input.type === "range" && this.valueDisplays[key]) {
+        const value = settings[key];
+        this.valueDisplays[key].textContent =
+          key === "gapSize" ? value + "°" : value;
+      }
+    });
   }
 
   setupEventListeners() {
-    // Основные кнопки
     this.settingsBtn.addEventListener("click", () => {
       this.vibrate();
       this.openModal();
@@ -598,6 +648,7 @@ class Settings {
 
     this.closeBtn.addEventListener("click", () => {
       this.vibrate();
+      this.updateUI(this.currentSettings); // Восстанавливаем предыдущие значения
       this.closeModal();
     });
 
@@ -606,7 +657,6 @@ class Settings {
       this.saveSettings();
     });
 
-    // Обработчики свайпа
     this.modal.addEventListener("touchstart", (e) => {
       this.touchStartY = e.touches[0].clientY;
       this.modalContent.style.transition = "none";
@@ -616,7 +666,6 @@ class Settings {
       this.touchMoveY = e.touches[0].clientY;
       const diff = this.touchMoveY - this.touchStartY;
 
-      // Если свайп вниз и мы в начале прокрутки
       if (diff > 0 && this.modal.scrollTop === 0) {
         e.preventDefault();
         this.modalContent.style.transform = `translateY(${diff}px) scale(${
@@ -637,18 +686,68 @@ class Settings {
     });
 
     Object.entries(this.inputs).forEach(([key, input]) => {
-      if (input.type === "range") {
-        input.addEventListener("input", () => {
-          const validValue = this.validateValue(key, input.value);
-          input.value = validValue;
-          if (key === "gapSize") {
-            this.valueDisplays[key].textContent = validValue + "°";
-          } else {
-            this.valueDisplays[key].textContent = validValue;
-          }
-        });
-      }
+      if (!input || input.type !== "range") return;
+
+      input.addEventListener("input", () => {
+        const validValue = this.validateValue(key, input.value);
+        input.value = validValue;
+        if (this.valueDisplays[key]) {
+          this.valueDisplays[key].textContent =
+            key === "gapSize" ? validValue + "°" : validValue;
+        }
+      });
     });
+  }
+
+  validateValue(key, value) {
+    if (this.ranges[key]) {
+      const numValue = Number(value);
+      return Math.min(
+        Math.max(numValue, this.ranges[key].min),
+        this.ranges[key].max
+      );
+    }
+    return value;
+  }
+
+  getSettings() {
+    return this.currentSettings;
+  }
+
+  saveSettings() {
+    const newSettings = {};
+    let hasChanges = false;
+
+    Object.entries(this.inputs).forEach(([key, input]) => {
+      if (!input) return;
+
+      let newValue;
+      if (input.type === "checkbox") {
+        newValue = input.checked;
+      } else if (input.type === "range") {
+        newValue = this.validateValue(key, input.value);
+      } else if (input.type === "color") {
+        newValue = /^#[0-9A-F]{6}$/i.test(input.value)
+          ? input.value
+          : this.defaults[key];
+      } else {
+        newValue = input.value;
+      }
+
+      if (this.currentSettings[key] !== newValue) {
+        hasChanges = true;
+      }
+      newSettings[key] = newValue;
+    });
+
+    if (hasChanges) {
+      this.currentSettings = newSettings;
+      localStorage.setItem("gameSettings", JSON.stringify(newSettings));
+      this.closeModal();
+      window.game.reset();
+    } else {
+      this.closeModal();
+    }
   }
 
   vibrate() {
@@ -658,6 +757,7 @@ class Settings {
   }
 
   openModal() {
+    this.updateUI(this.currentSettings);
     this.modal.style.display = "block";
     this.modalContent.style.transform = "";
     setTimeout(() => this.modal.classList.add("visible"), 10);
@@ -672,114 +772,7 @@ class Settings {
     const hue = Math.random() * 360;
     return `hsl(${hue}, 80%, 60%)`;
   }
-
-  loadSettings() {
-    let settings;
-    try {
-      const saved = localStorage.getItem("gameSettings");
-      // Сначала применяем все значения по умолчанию
-      settings = { ...this.defaults };
-
-      // Затем загружаем сохраненные настройки, если они есть
-      if (saved) {
-        const savedSettings = JSON.parse(saved);
-
-        // Проверяем числовые значения
-        Object.entries(this.ranges).forEach(([key]) => {
-          if (typeof savedSettings[key] !== "undefined") {
-            settings[key] = this.validateValue(key, savedSettings[key]);
-          }
-        });
-
-        // Проверяем булевы значения
-        [
-          "ballGradient",
-          "ballTrail",
-          "ringGradient",
-          "randomRingColors",
-          "synchronizedMovement",
-          "infiniteMode",
-          "finalExplosionColors",
-        ].forEach((key) => {
-          if (typeof savedSettings[key] === "boolean") {
-            settings[key] = savedSettings[key];
-          }
-        });
-
-        // Проверяем цвета
-        ["ballColor", "ringColor", "particleColor"].forEach((key) => {
-          if (
-            savedSettings[key] &&
-            /^#[0-9A-F]{6}$/i.test(savedSettings[key])
-          ) {
-            settings[key] = savedSettings[key];
-          }
-        });
-
-        // Проверяем выпадающие списки
-        if (["same", "contrast", "random"].includes(savedSettings.sparkColor)) {
-          settings.sparkColor = savedSettings.sparkColor;
-        }
-      }
-    } catch (e) {
-      console.error("Error loading settings:", e);
-      settings = this.defaults;
-    }
-
-    Object.entries(this.inputs).forEach(([key, input]) => {
-      if (input.type === "checkbox") {
-        input.checked = settings[key];
-      } else {
-        input.value = settings[key];
-      }
-
-      if (input.type === "range") {
-        if (key === "gapSize") {
-          this.valueDisplays[key].textContent = settings[key] + "°";
-        } else {
-          this.valueDisplays[key].textContent = settings[key];
-        }
-      }
-    });
-
-    return settings;
-  }
-
-  saveSettings() {
-    // Начинаем с настроек по умолчанию
-    const settings = { ...this.defaults };
-
-    // Загружаем значения из инпутов
-    Object.entries(this.inputs).forEach(([key, input]) => {
-      if (!input) return; // Пропускаем, если элемент не найден
-
-      if (input.type === "checkbox") {
-        settings[key] = input.checked;
-      } else if (input.type === "range") {
-        settings[key] = this.validateValue(key, input.value);
-      } else if (input.type === "color") {
-        if (/^#[0-9A-F]{6}$/i.test(input.value)) {
-          settings[key] = input.value;
-        }
-      } else if (key === "sparkColor") {
-        if (["same", "contrast", "random"].includes(input.value)) {
-          settings[key] = input.value;
-        }
-      } else {
-        settings[key] = input.value;
-      }
-    });
-
-    localStorage.setItem("gameSettings", JSON.stringify(settings));
-    this.closeModal();
-    window.game.reset();
-  }
-
-  getSettings() {
-    return this.loadSettings();
-  }
 }
-
 class Game {
   createFinalExplosion() {
     const gameSettings = this.settings.getSettings();
@@ -838,6 +831,7 @@ class Game {
     this.ctx = this.canvas.getContext("2d");
     this.resetButton = document.getElementById("resetButton");
     this.settings = new Settings();
+    this.currentSettings = null;
 
     this.updateCanvasSize();
     window.addEventListener("resize", () => this.updateCanvasSize());
@@ -848,17 +842,50 @@ class Game {
   }
 
   updateCanvasSize() {
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
+    const dpr = window.devicePixelRatio || 1;
+    const displayWidth = window.innerWidth;
+    const displayHeight = window.innerHeight;
 
-    const gameSettings = this.settings.getSettings();
-    const ringCount = Number(gameSettings.ringCount);
+    // Определяем минимальную сторону для квадратного канваса
+    const size = Math.min(displayWidth, displayHeight);
+
+    // Устанавливаем размеры канваса с учетом DPR
+    this.canvas.width = size * dpr;
+    this.canvas.height = size * dpr;
+
+    // Устанавливаем CSS-размеры
+    this.canvas.style.width = size + "px";
+    this.canvas.style.height = size + "px";
+
+    // Центрируем канвас по горизонтали и вертикали
+    if (displayWidth > size) {
+      this.canvas.style.left = (displayWidth - size) / 2 + "px";
+    } else {
+      this.canvas.style.left = "0";
+    }
+
+    if (displayHeight > size) {
+      this.canvas.style.top = (displayHeight - size) / 2 + "px";
+    } else {
+      this.canvas.style.top = "0";
+    }
+
+    // Убираем margin и добавляем position: fixed если ещё нет
+    this.canvas.style.margin = "0";
+    this.canvas.style.position = "fixed";
+
+    // Восстанавливаем масштаб с учетом DPR
+    this.ctx.scale(dpr, dpr);
+
+    // Вычисляем максимальный радиус для всех колец
+    const gameSettings =
+      this.settings?.getSettings() || this.settings?.defaults;
+    const ringCount = Number(gameSettings?.ringCount || 5);
     const maxRadius = 100 + (ringCount - 1) * 50;
 
-    this.scale = Math.min(
-      this.canvas.width / (maxRadius * 2.5),
-      this.canvas.height / (maxRadius * 2.5)
-    );
+    // Устанавливаем масштаб так, чтобы все кольца помещались с отступом
+    const padding = 40;
+    this.scale = (size / 2 - padding) / maxRadius;
   }
 
   reset(withFade = false) {
@@ -975,24 +1002,23 @@ class Game {
   }
 
   draw() {
-    if (this.isResetting) {
-      return;
-    }
+    if (this.isResetting) return;
 
     this.ctx.fillStyle = "black";
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     if (this.rings && this.ball) {
+      const centerX = this.canvas.width / (2 * (window.devicePixelRatio || 1));
+      const centerY = this.canvas.height / (2 * (window.devicePixelRatio || 1));
+
       this.ctx.save();
-      this.ctx.translate(this.canvas.width / 2, this.canvas.height / 2);
+      this.ctx.translate(centerX, centerY);
       this.ctx.scale(this.scale, this.scale);
 
       for (let ring of this.rings) {
         ring.draw(this.ctx);
       }
-
       this.ball.draw(this.ctx);
-
       this.ctx.restore();
     }
   }
