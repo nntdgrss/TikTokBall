@@ -18,7 +18,33 @@ body {
   font-family: "Roboto", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+.lang-container {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(70px, calc(10px + env(safe-area-inset-right) + 60px));
+  z-index: 1000;
+}
 
+.lang-button {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.lang-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.flag-icon {
+  width: 30px;
+  height: 20px;
+  display: block;
+}
 #gameCanvas {
   background: black;
   position: fixed;
