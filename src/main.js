@@ -17,7 +17,7 @@ document.querySelector("#app").innerHTML = `
     <h3 data-translate="language">Выберите язык</h3>
     <div class="flags-container">
       <button class="lang-option">
-        <img src="flags/us.svg" alt="English" class="flag-icon">
+        <img src="/usa_icon.png" alt="English" class="flag-icon">
       </button>
     </div>
   </div>
