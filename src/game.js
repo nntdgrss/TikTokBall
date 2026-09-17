@@ -113,6 +113,29 @@ class Ball {
       this.gradient.addColorStop(1, this.adjustColor(this.color, -30));
     }
   }
+    createParticle() {
+    const now = performance.now();
+    if (now - this.lastParticleTime >= this.particleInterval) {
+      this.lastParticleTime = now;
+      const particleColor = this.color || "#ffffff";
+
+      const particle = new Particle(
+        this.x,
+        this.y,
+        particleColor,
+        this.radius * 0.7,
+        this.particleLifetime,
+        {
+          useGradient: this.useGradient,
+          endColor: this.adjustColor(particleColor, -50),
+        }
+      );
+      this.particles.unshift(particle);
+      if (this.particles.length > this.maxParticles) {
+        this.particles.pop();
+      }
+    }
+  }
 
   adjustColor(color, amount) {
     const hex = color.replace("#", "");
@@ -130,6 +153,7 @@ class Ball {
     this.dx = Math.cos(angle + deviation) * this.speed;
     this.dy = Math.sin(angle + deviation) * this.speed;
   }
+
 
   move() {
     this.x += this.dx;
@@ -151,17 +175,7 @@ class Ball {
     const now = performance.now();
     if (now - this.lastParticleTime >= this.particleInterval) {
       this.lastParticleTime = now;
-      let particleColor = "#ffffff";
-      try {
-        if (window.game && window.game.settings) {
-          const gameSettings = window.game.settings.getSettings();
-          if (gameSettings && gameSettings.particleColor) {
-            particleColor = gameSettings.particleColor;
-          }
-        }
-      } catch (e) {
-        console.warn("Failed to get particle color from settings");
-      }
+      const particleColor = this.color || "#ffffff";
 
       const particle = new Particle(
         this.x,
