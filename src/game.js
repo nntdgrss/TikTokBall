@@ -13,6 +13,7 @@ class Particle {
     this.gradient = null;
   }
 
+
   adjustColor(color, amount) {
     const hex = color.replace("#", "");
     const num = parseInt(hex, 16);
