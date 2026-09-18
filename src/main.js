@@ -7,6 +7,9 @@ document.querySelector("#app").innerHTML = `
     </div>
     <button id="resetButton" style="display: none">Играть снова</button>
     <button id="settingsButton">Настройки</button>
+    <button id="tykButton">Тык</button>
+    <img id="popupImage" src="/BlueLobster.webp" alt="э бля работай" style="display: none" />
+    <audio id="clickSound" src="/blue-lobster-meme.mp3"></audio>
 
     <div id="settingsModal" class="modal">
       <div class="modal-content">

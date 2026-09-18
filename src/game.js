@@ -516,6 +516,7 @@ class Ring {
   }
 }
 
+
 class Settings {
   constructor() {
     this.modal = document.getElementById("settingsModal");
@@ -663,7 +664,7 @@ class Settings {
 
     this.closeBtn.addEventListener("click", () => {
       this.vibrate();
-      this.updateUI(this.currentSettings); // Восстанавливаем предыдущие значения
+      this.updateUI(this.currentSettings); 
       this.closeModal();
     });
 
@@ -861,18 +862,18 @@ class Game {
     const displayWidth = window.innerWidth;
     const displayHeight = window.innerHeight;
 
-    // Определяем минимальную сторону для квадратного канваса
+    
     const size = Math.min(displayWidth, displayHeight);
 
-    // Устанавливаем размеры канваса с учетом DPR
+   
     this.canvas.width = size * dpr;
     this.canvas.height = size * dpr;
 
-    // Устанавливаем CSS-размеры
+   
     this.canvas.style.width = size + "px";
     this.canvas.style.height = size + "px";
 
-    // Центрируем канвас по горизонтали и вертикали
+    
     if (displayWidth > size) {
       this.canvas.style.left = (displayWidth - size) / 2 + "px";
     } else {
@@ -885,20 +886,20 @@ class Game {
       this.canvas.style.top = "0";
     }
 
-    // Убираем margin и добавляем position: fixed если ещё нет
+   
     this.canvas.style.margin = "0";
     this.canvas.style.position = "fixed";
 
-    // Восстанавливаем масштаб с учетом DPR
+   
     this.ctx.scale(dpr, dpr);
 
-    // Вычисляем максимальный радиус для всех колец
+   
     const gameSettings =
       this.settings?.getSettings() || this.settings?.defaults;
     const ringCount = Number(gameSettings?.ringCount || 5);
     const maxRadius = 100 + (ringCount - 1) * 50;
 
-    // Устанавливаем масштаб так, чтобы все кольца помещались с отступом
+    
     const padding = 40;
     this.scale = (size / 2 - padding) / maxRadius;
   }
@@ -919,7 +920,7 @@ class Game {
     this.ball = new Ball(0, 0, ballRadius, Number(gameSettings.ballSpeed));
     this.ball.color = gameSettings.ballColor;
     this.ball.useGradient = gameSettings.ballGradient;
-    this.ball.useTrail = gameSettings.ballTrail; // Включаем/выключаем след
+    this.ball.useTrail = gameSettings.ballTrail; 
     this.ball.glowSize = Number(gameSettings.ballGlow);
     this.ball.updateGradient(this.ctx);
 
@@ -1003,10 +1004,10 @@ class Game {
       this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
       if (opacity < 1) {
-        opacity += 0.15; // Ускорим затухание
+        opacity += 0.15; 
         requestAnimationFrame(fadeOut);
       } else {
-        // Полностью очищаем экран перед сбросом
+        
         this.ctx.fillStyle = "black";
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         this.isResetting = false;
@@ -1046,4 +1047,23 @@ class Game {
   }
 }
 
-window.onload = () => new Game();
+window.onload = () => {
+  new Game();
+
+  const tykButton = document.getElementById("tykButton");
+  const popupImage = document.getElementById("popupImage");
+  const clickSound = document.getElementById("clickSound");
+  let timeoutId = null;
+
+  tykButton.addEventListener("click", () => {
+    clickSound.currentTime = 0;
+    clickSound.play().catch((error) => {
+    });
+
+    popupImage.style.display = "block";
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      popupImage.style.display = "none";
+    }, 6000);
+  });
+};
